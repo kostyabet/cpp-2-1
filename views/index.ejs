@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task board</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <!-- New task form -->
+    <section class="card">
+      <h2>New task</h2>
+      <form action="/tasks" method="POST" enctype="multipart/form-data" class="task-form">
+        <div class="form-row">
+          <label>
+            Title *
+            <input type="text" name="title" required maxlength="200" placeholder="What needs to be done?" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>
+            Description
+            <textarea name="description" rows="2" placeholder="Details (optional)"></textarea>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Status
+            <select name="status">
+              <% STATUSES.forEach(function(s){ %>
+                <option value="<%= s %>"><%= STATUS_LABELS[s] %></option>
+              <% }); %>
+            </select>
+          </label>
+          <label>
+            Due date
+            <input type="date" name="dueDate" />
+          </label>
+          <label>
+            Files
+            <input type="file" name="files" multiple data-preview="new-file-preview" />
+          </label>
+        </div>
+        <!-- Visual preview of the selected files -->
+        <div class="file-preview" id="new-file-preview"></div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Add task</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Kanban board -->
+    <section class="board">
+      <% columns.forEach(function(col){ %>
+        <% if (!activeFilter || activeFilter === col.key) { %>
+          <div class="column column-<%= col.key %>" data-status="<%= col.key %>">
+            <div class="column-head">
+              <span class="badge badge-<%= col.key %>"><%= col.label %></span>
+              <span class="col-count"><%= col.tasks.length %></span>
+            </div>
+
+            <div class="column-body" data-dropzone="<%= col.key %>">
+              <% if (col.tasks.length === 0) { %>
+                <p class="col-empty">Drop a task here</p>
+              <% } %>
+
+              <% col.tasks.forEach(function(task){ %>
+                <% var overdue = task.dueDate && task.status !== 'done' && new Date(task.dueDate) < new Date(new Date().toDateString()); %>
+                <article class="ticket status-<%= task.status %>" id="task-<%= task.id %>"
+                         draggable="true" data-id="<%= task.id %>">
+                  <div class="ticket-head">
+                    <h3 class="<%= task.status === 'done' ? 'done-text' : '' %>"><%= task.title %></h3>
+                    <span class="drag-handle" title="Drag">⠿</span>
+                  </div>
+
+                  <% if (task.dueDate) { %>
+                    <div class="due <%= overdue ? 'overdue' : '' %>">
+                      📅 <%= new Date(task.dueDate).toLocaleDateString('en-GB') %><% if (overdue) { %> · overdue<% } %>
+                    </div>
+                  <% } %>
+
+                  <% if (task.description) { %>
+                    <p class="ticket-desc"><%= task.description %></p>
+                  <% } %>
+
+                  <!-- Attachments: images as thumbnails, other files as chips -->
+                  <% if (task.files && task.files.length) { %>
+                    <div class="attachments">
+                      <% task.files.forEach(function(f){ %>
+                        <% if (f.mime && f.mime.indexOf('image/') === 0) { %>
+                          <a class="thumb" href="/uploads/<%= f.storedName %>" target="_blank" rel="noopener" title="<%= f.originalName %>">
+                            <img src="/uploads/<%= f.storedName %>" alt="<%= f.originalName %>" />
+                          </a>
+                        <% } else { %>
+                          <a class="file-chip" href="/uploads/<%= f.storedName %>" target="_blank" rel="noopener" title="<%= f.originalName %>">
+                            📎 <span class="fname"><%= f.originalName %></span>
+                            <span class="fsize"><%= (f.size / 1024).toFixed(1) %> KB</span>
+                          </a>
+                        <% } %>
+                      <% }); %>
+                    </div>
+                  <% } %>
+
+                  <div class="ticket-actions">
+                    <a class="btn btn-small" href="/?status=<%= activeFilter %>&edit=<%= task.id %>#task-<%= task.id %>">Edit</a>
+                    <form action="/tasks/<%= task.id %>/delete" method="POST" class="inline-form"
+                          onsubmit="return confirm('Delete this task?');">
+                      <input type="hidden" name="returnStatus" value="<%= activeFilter %>" />
+                      <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                    </form>
+                  </div>
+
+                  <!-- Inline edit form -->
+                  <% if (editId === task.id) { %>
+                    <div class="edit-panel">
+                      <h4>Edit</h4>
+                      <form action="/tasks/<%= task.id %>/update" method="POST" enctype="multipart/form-data" class="task-form">
+                        <input type="hidden" name="returnStatus" value="<%= activeFilter %>" />
+                        <div class="form-row">
+                          <label>Title *
+                            <input type="text" name="title" required value="<%= task.title %>" />
+                          </label>
+                        </div>
+                        <div class="form-row">
+                          <label>Description
+                            <textarea name="description" rows="2"><%= task.description %></textarea>
+                          </label>
+                        </div>
+                        <div class="form-row">
+                          <label>Status
+                            <select name="status">
+                              <% STATUSES.forEach(function(s){ %>
+                                <option value="<%= s %>" <%= task.status === s ? 'selected' : '' %>><%= STATUS_LABELS[s] %></option>
+                              <% }); %>
+                            </select>
+                          </label>
+                        </div>
+                        <div class="form-row">
+                          <label>Due date
+                            <input type="date" name="dueDate" value="<%= task.dueDate || '' %>" />
+                          </label>
+                        </div>
+                        <div class="form-row">
+                          <label>Add files
+                            <input type="file" name="files" multiple data-preview="edit-preview-<%= task.id %>" />
+                          </label>
+                          <div class="file-preview" id="edit-preview-<%= task.id %>"></div>
+                        </div>
+                        <div class="form-actions">
+                          <button type="submit" class="btn btn-primary">Save</button>
+                          <a class="btn btn-small" href="/?status=<%= activeFilter %>">Cancel</a>
+                        </div>
+                      </form>
+                    </div>
+                  <% } %>
+                </article>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+      <% }); %>
+    </section>
+  </div>
+
+  <!-- Hidden form to change status on drag-and-drop (form submission, SSR) -->
+  <form id="move-form" action="" method="POST" class="hidden-form">
+    <input type="hidden" name="status" id="move-status" />
+    <input type="hidden" name="returnStatus" value="<%= activeFilter %>" />
+  </form>
+
+  <!-- Lightbox: fullscreen image view on thumbnail click -->
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lightbox-close" type="button" aria-label="Close">✕</button>
+    <img class="lightbox-img" src="" alt="" />
+    <div class="lightbox-caption"></div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
